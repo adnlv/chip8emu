@@ -1,4 +1,6 @@
-﻿#include "chip8.hpp"
+﻿#include <string>
+
+#include "chip8.hpp"
 #include "platform.hpp"
 
 int main(int argc, char** argv)

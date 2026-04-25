@@ -4,6 +4,7 @@
 #include <SFML/Window.hpp>
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 class Platform
 {
@@ -27,7 +28,20 @@ public:
 
 	void Update(void const* buffer, int pitch)
 	{
-		texture.update(static_cast<const std::uint8_t*>(buffer));
+		std::vector<std::uint8_t> rgba_pixels(VM_VIDEO_BUFFER_W * VM_VIDEO_BUFFER_H * 4);
+		const std::uint8_t* raw_buffer = static_cast<const std::uint8_t*>(buffer);
+
+		for (size_t i = 0; i < VM_VIDEO_BUFFER_W * VM_VIDEO_BUFFER_H; ++i)
+		{
+			std::uint8_t color = raw_buffer[i] ? 255 : 0;
+
+			rgba_pixels[i * 4 + 0] = color; // R
+			rgba_pixels[i * 4 + 1] = color; // G
+			rgba_pixels[i * 4 + 2] = color; // B
+			rgba_pixels[i * 4 + 3] = 255;   // A (Fully opaque)
+		}
+
+		texture.update(rgba_pixels.data());
 		window.clear();
 		window.draw(sprite);
 		window.display();
