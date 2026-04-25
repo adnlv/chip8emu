@@ -8,8 +8,15 @@ endif()
 
 project(chip8emu LANGUAGES CXX)
 
-add_executable(chip8emu chip8emu.cpp)
+include(FetchContent)
+FetchContent_Declare(SFML
+    GIT_REPOSITORY https://github.com/SFML/SFML.git
+    GIT_TAG 3.1.0
+    GIT_SHALLOW ON
+    EXCLUDE_FROM_ALL
+    SYSTEM)
+FetchContent_MakeAvailable(SFML)
 
-if(CMAKE_VERSION VERSION_GREATER 3.12)
-	set_property(TARGET chip8emu PROPERTY CXX_STANDARD 20)
-endif()
+add_executable(chip8emu chip8emu.cpp)
+target_compile_features(chip8emu PRIVATE cxx_std_20)
+target_link_libraries(chip8emu PRIVATE SFML::Graphics)
