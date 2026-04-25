@@ -37,8 +37,8 @@ uint8_t fontset[VM_FONTSET_CAPACITY] = {
 class Chip8
 {
 public:
-	Chip8() :
-		random_engine(std::chrono::system_clock::now().time_since_epoch().count())
+    Chip8() :
+		random_engine(static_cast<std::default_random_engine::result_type>(std::chrono::system_clock::now().time_since_epoch().count()))
 	{
 		// Initialize PC
 		pc = VM_MEMORY_ROM_START_ADDRESS;
@@ -49,8 +49,8 @@ public:
 			memory[VM_FONTSET_START_ADDRESS + i] = fontset[i];
 		}
 
-		// Initialize RNG
-		random_byte = std::uniform_int_distribution<uint8_t>(0, 0xFF);
+        // Initialize RNG (std::uniform_int_distribution requires standard integer types)
+		random_byte = std::uniform_int_distribution<int>(0, 0xFF);
 		
 		// Set up function pointer table
 		table[0x0] = &Chip8::Table0;
@@ -136,13 +136,13 @@ public:
 	void Cycle(void)
 	{
 		// Fetch
-		opcode = (memory[pc] << 8u) | memory[pc + 1];
+		opcode = (memory[pc] << 8) | memory[pc + 1];
 
 		// Increment the PC before we execute anything
 		pc += 2;
 
 		// Decode and Execute
-		((*this).*(table[(opcode & 0xF000u) >> 12u]))();
+		((*this).*(table[(opcode & 0xF000) >> 12]))();
 
 		// Decrement the delay timer if it's been set
 		if (delay_timer > 0)
@@ -358,12 +358,13 @@ public:
 		pc = registers[0] + opcode & 0x0FFF;
 	}
 
-	void OP_CXNN(void)
+    void OP_CXNN(void)
 	{
 		const uint8_t Vx = (opcode & 0x0F00) >> 8;
 		const uint8_t byte = opcode & 0x00FF;
 
-		registers[Vx] = random_byte(random_engine) & byte;
+		// uniform_int_distribution is instantiated with int; cast result to uint8_t
+		registers[Vx] = static_cast<uint8_t>(random_byte(random_engine) & byte);
 	}
 
 	void OP_DXYN(void)
@@ -596,15 +597,15 @@ public:
 	}
 
 	typedef void (Chip8::*Chip8Func)();
-	Chip8Func table[0xF + 1];
-	Chip8Func table0[0xE + 1];
-	Chip8Func table8[0xE + 1];
-	Chip8Func tableE[0xE + 1];
+	Chip8Func table[0x0F + 1];
+	Chip8Func table0[0x0E + 1];
+	Chip8Func table8[0x0E + 1];
+	Chip8Func tableE[0x0E + 1];
 	Chip8Func tableF[0x65 + 1];
 
 private:
 	std::default_random_engine random_engine;
-	std::uniform_int_distribution<uint8_t> random_byte;
+	std::uniform_int_distribution<int> random_byte;
 
 	uint8_t memory[VM_MEMORY_CAPACITY]{};
 	uint8_t registers[VM_REGISTERS_CAPACITY]{};
