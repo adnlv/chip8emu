@@ -6,39 +6,41 @@
 #include <optional>
 #include <vector>
 
+#include "chip8.hpp"
+
 class Platform
 {
 public:
-	Platform(char const* title, int windowWidth, int windowHeight, int textureWidth, int textureHeight)
-		: window(sf::VideoMode({ static_cast<unsigned int>(windowWidth), static_cast<unsigned int>(windowHeight) }), title),
-		texture(),
-		sprite(texture)
+	Platform(char const* title, const int windowWidth, const int windowHeight, const int textureWidth,
+	         const int textureHeight)
+		: window(sf::VideoMode({static_cast<unsigned int>(windowWidth), static_cast<unsigned int>(windowHeight)}),
+		         title),
+		  sprite(texture)
 	{
-		(void)texture.resize(sf::Vector2u(static_cast<unsigned int>(textureWidth), static_cast<unsigned int>(textureHeight)));
+		(void)texture.resize(sf::Vector2u(static_cast<unsigned int>(textureWidth),
+		                                  static_cast<unsigned int>(textureHeight)));
 		sprite.setTexture(texture, true);
 
-		float scaleX = static_cast<float>(windowWidth) / static_cast<float>(textureWidth);
-		float scaleY = static_cast<float>(windowHeight) / static_cast<float>(textureHeight);
+		const float scaleX = static_cast<float>(windowWidth) / static_cast<float>(textureWidth);
+		const float scaleY = static_cast<float>(windowHeight) / static_cast<float>(textureHeight);
 		sprite.setScale(sf::Vector2f(scaleX, scaleY));
 	}
 
-	~Platform()
-	{
-	}
+	~Platform() = default;
 
-	void Update(void const* buffer, int pitch)
+	void update(void const* buffer, [[maybe_unused]] int pitch)
 	{
-		std::vector<std::uint8_t> rgba_pixels(VM_VIDEO_BUFFER_W * VM_VIDEO_BUFFER_H * 4);
-		const std::uint8_t* raw_buffer = static_cast<const std::uint8_t*>(buffer);
+		std::vector<std::uint8_t> rgba_pixels(Chip8::FRAME_BUF_W * Chip8::FRAME_BUF_H * 4);
+		const auto* raw_buffer = static_cast<const std::uint8_t*>(buffer);
 
-		for (size_t i = 0; i < VM_VIDEO_BUFFER_W * VM_VIDEO_BUFFER_H; ++i)
+		for (size_t i = 0; i < Chip8::FRAME_BUF_W * Chip8::FRAME_BUF_H; ++i)
 		{
-			std::uint8_t color = raw_buffer[i] ? 255 : 0;
+			const std::uint8_t color = raw_buffer[i] ? 255 : 0;
 
 			rgba_pixels[i * 4 + 0] = color; // R
 			rgba_pixels[i * 4 + 1] = color; // G
 			rgba_pixels[i * 4 + 2] = color; // B
-			rgba_pixels[i * 4 + 3] = 255;   // A (Fully opaque)
+			rgba_pixels[i * 4 + 3] = 255; // A (Fully opaque)
 		}
 
 		texture.update(rgba_pixels.data());
@@ -47,7 +49,7 @@ public:
 		window.display();
 	}
 
-	bool ProcessInput(uint8_t* keys)
+	bool process_input(uint8_t* keys)
 	{
 		bool quit = false;
 
@@ -61,47 +63,115 @@ public:
 			{
 				switch (keyPressed->code)
 				{
-				case sf::Keyboard::Key::Escape: quit = true; break;
-				case sf::Keyboard::Key::X: keys[0] = 1; break;
-				case sf::Keyboard::Key::Num1: keys[1] = 1; break;
-				case sf::Keyboard::Key::Num2: keys[2] = 1; break;
-				case sf::Keyboard::Key::Num3: keys[3] = 1; break;
-				case sf::Keyboard::Key::Q: keys[4] = 1; break;
-				case sf::Keyboard::Key::W: keys[5] = 1; break;
-				case sf::Keyboard::Key::E: keys[6] = 1; break;
-				case sf::Keyboard::Key::A: keys[7] = 1; break;
-				case sf::Keyboard::Key::S: keys[8] = 1; break;
-				case sf::Keyboard::Key::D: keys[9] = 1; break;
-				case sf::Keyboard::Key::Z: keys[0xA] = 1; break;
-				case sf::Keyboard::Key::C: keys[0xB] = 1; break;
-				case sf::Keyboard::Key::Num4: keys[0xC] = 1; break;
-				case sf::Keyboard::Key::R: keys[0xD] = 1; break;
-				case sf::Keyboard::Key::F: keys[0xE] = 1; break;
-				case sf::Keyboard::Key::V: keys[0xF] = 1; break;
-				default: break;
+				case sf::Keyboard::Key::Escape:
+					quit = true;
+					break;
+				case sf::Keyboard::Key::X:
+					keys[0] = 1;
+					break;
+				case sf::Keyboard::Key::Num1:
+					keys[1] = 1;
+					break;
+				case sf::Keyboard::Key::Num2:
+					keys[2] = 1;
+					break;
+				case sf::Keyboard::Key::Num3:
+					keys[3] = 1;
+					break;
+				case sf::Keyboard::Key::Q:
+					keys[4] = 1;
+					break;
+				case sf::Keyboard::Key::W:
+					keys[5] = 1;
+					break;
+				case sf::Keyboard::Key::E:
+					keys[6] = 1;
+					break;
+				case sf::Keyboard::Key::A:
+					keys[7] = 1;
+					break;
+				case sf::Keyboard::Key::S:
+					keys[8] = 1;
+					break;
+				case sf::Keyboard::Key::D:
+					keys[9] = 1;
+					break;
+				case sf::Keyboard::Key::Z:
+					keys[0xA] = 1;
+					break;
+				case sf::Keyboard::Key::C:
+					keys[0xB] = 1;
+					break;
+				case sf::Keyboard::Key::Num4:
+					keys[0xC] = 1;
+					break;
+				case sf::Keyboard::Key::R:
+					keys[0xD] = 1;
+					break;
+				case sf::Keyboard::Key::F:
+					keys[0xE] = 1;
+					break;
+				case sf::Keyboard::Key::V:
+					keys[0xF] = 1;
+					break;
+				default:
+					break;
 				}
 			}
 			else if (const auto* keyReleased = event->getIf<sf::Event::KeyReleased>())
 			{
 				switch (keyReleased->code)
 				{
-				case sf::Keyboard::Key::X: keys[0] = 0; break;
-				case sf::Keyboard::Key::Num1: keys[1] = 0; break;
-				case sf::Keyboard::Key::Num2: keys[2] = 0; break;
-				case sf::Keyboard::Key::Num3: keys[3] = 0; break;
-				case sf::Keyboard::Key::Q: keys[4] = 0; break;
-				case sf::Keyboard::Key::W: keys[5] = 0; break;
-				case sf::Keyboard::Key::E: keys[6] = 0; break;
-				case sf::Keyboard::Key::A: keys[7] = 0; break;
-				case sf::Keyboard::Key::S: keys[8] = 0; break;
-				case sf::Keyboard::Key::D: keys[9] = 0; break;
-				case sf::Keyboard::Key::Z: keys[0xA] = 0; break;
-				case sf::Keyboard::Key::C: keys[0xB] = 0; break;
-				case sf::Keyboard::Key::Num4: keys[0xC] = 0; break;
-				case sf::Keyboard::Key::R: keys[0xD] = 0; break;
-				case sf::Keyboard::Key::F: keys[0xE] = 0; break;
-				case sf::Keyboard::Key::V: keys[0xF] = 0; break;
-				default: break;
+				case sf::Keyboard::Key::X:
+					keys[0] = 0;
+					break;
+				case sf::Keyboard::Key::Num1:
+					keys[1] = 0;
+					break;
+				case sf::Keyboard::Key::Num2:
+					keys[2] = 0;
+					break;
+				case sf::Keyboard::Key::Num3:
+					keys[3] = 0;
+					break;
+				case sf::Keyboard::Key::Q:
+					keys[4] = 0;
+					break;
+				case sf::Keyboard::Key::W:
+					keys[5] = 0;
+					break;
+				case sf::Keyboard::Key::E:
+					keys[6] = 0;
+					break;
+				case sf::Keyboard::Key::A:
+					keys[7] = 0;
+					break;
+				case sf::Keyboard::Key::S:
+					keys[8] = 0;
+					break;
+				case sf::Keyboard::Key::D:
+					keys[9] = 0;
+					break;
+				case sf::Keyboard::Key::Z:
+					keys[0xA] = 0;
+					break;
+				case sf::Keyboard::Key::C:
+					keys[0xB] = 0;
+					break;
+				case sf::Keyboard::Key::Num4:
+					keys[0xC] = 0;
+					break;
+				case sf::Keyboard::Key::R:
+					keys[0xD] = 0;
+					break;
+				case sf::Keyboard::Key::F:
+					keys[0xE] = 0;
+					break;
+				case sf::Keyboard::Key::V:
+					keys[0xF] = 0;
+					break;
+				default:
+					break;
 				}
 			}
 		}

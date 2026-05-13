@@ -2,623 +2,668 @@
 
 #include <iostream>
 #include <fstream>
-#include <cstdint>
-#include <chrono>
 #include <random>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <climits>
 
-#define VM_MEMORY_CAPACITY 0x1000
-#define VM_REGISTERS_CAPACITY 0x10
-#define VM_STACK_CAPACITY 0x10
-#define VM_KEYPAD_CAPACITY 0x10
-#define VM_VIDEO_BUFFER_W 0x40
-#define VM_VIDEO_BUFFER_H 0x20
-#define VM_VIDEO_BUFFER_CAPACITY 0x0800
-#define VM_MEMORY_ROM_START_ADDRESS 0x200
-#define VM_FONTSET_CAPACITY 0x50
-#define VM_FONTSET_START_ADDRESS 0x50
-
-uint8_t fontset[VM_FONTSET_CAPACITY] = {
-	0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-	0x20, 0x60, 0x20, 0x20, 0x70, // 1
-	0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-	0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-	0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-	0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-	0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-	0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-	0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-	0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-	0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-	0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-	0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-	0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-	0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-	0xF0, 0x80, 0xF0, 0x80, 0x80  // F
-};
+#include "fontset.hpp"
 
 class Chip8
 {
 public:
-	Chip8() :
-		random_engine(static_cast<std::default_random_engine::result_type>(std::chrono::system_clock::now().time_since_epoch().count()))
-	{
-		// Initialize PC
-		pc = VM_MEMORY_ROM_START_ADDRESS;
+	static constexpr int STACK_CAP = 16; // stack capacity
+	static constexpr int NUM_REGISTERS = 16; // number of registers
+	static constexpr int ADDR_MEM_CAP = 4096; // addressable memory capacity
+	static constexpr int FRAME_BUF_CAP = 2048; // overall frame buffer capacity
+	static constexpr int FRAME_BUF_W = 64; // frame buffer width
+	static constexpr int FRAME_BUF_H = 32; // frame buffer height
+	static constexpr int KEYPAD_CAP = 16; // keypad capacity
+	static constexpr int IN_START_ADDR = 0x200; // all the supported programs will start at this memory location
 
-		// Load fonts into memory
-		for (size_t i = 0; i < VM_FONTSET_CAPACITY; ++i)
+	std::default_random_engine m_re; // random engine
+	std::independent_bits_engine<std::mt19937, CHAR_BIT, uint8_t> m_be; // byte engine
+
+	uint8_t m_V[NUM_REGISTERS]{}; // registers
+	uint16_t m_Vi{}; // index register
+	uint16_t m_sb[STACK_CAP]{}; // stack
+	uint8_t m_sp{}; // stack pointer, used to point to the topmost level of the stack
+	uint8_t m_am[ADDR_MEM_CAP]{}; // addressable memory
+	uint8_t m_fb[FRAME_BUF_CAP]{}; // frame buffer
+	uint8_t m_kp[KEYPAD_CAP]{}; // keypad
+	uint8_t m_dt{}; // delay timer
+	uint8_t m_st{}; // sound timer
+	uint16_t m_pc{}; // program counter
+	uint16_t m_opcode{}; // opcode
+
+	typedef void (Chip8::*Chip8OpFunc)();
+	Chip8OpFunc m_table[0x0F + 1]{};
+	Chip8OpFunc m_table_0[0x0E + 1]{};
+	Chip8OpFunc m_table_8[0x0E + 1]{};
+	Chip8OpFunc m_table_E[0x0E + 1]{};
+	Chip8OpFunc m_table_F[0x65 + 1]{};
+
+	/// @brief Get the lowest 12 bits of the instruction.
+	uint16_t opcode_nnn()
+	{
+		return m_opcode & 0x0FFF; // 0x0FFF == 0000 1111 1111 1111
+	}
+
+	/// @brief Get the lowest 4 bits of the instruction.
+	uint8_t opcode_n()
+	{
+		return m_opcode & 0x000F; // 0x000F == 0000 0000 0000 1111
+	}
+
+	/// @brief Get the lower 4 bits of the high byte of the instruction.
+	uint8_t opcode_x()
+	{
+		return (m_opcode & 0x0F00) >> 8; // 0x0F00 == 0000 1111 0000 0000
+	}
+
+	/// @brief Get the upper 4 bits of the low byte of the instruction.
+	uint8_t opcode_y()
+	{
+		return (m_opcode & 0x00F0) >> 4; // 0x00F0 == 0000 0000 1111 0000
+	}
+
+	/// @brief Get the lowest 8 bits of the instruction.
+	uint8_t opcode_kk()
+	{
+		return m_opcode & 0x00FF; // 0x00FF == 0000 0000 1111 1111
+	}
+
+	Chip8()
+		: m_re(std::chrono::system_clock::now().time_since_epoch().count()),
+		  m_be(m_re())
+	{
+		m_pc = IN_START_ADDR;
+
+		// Load fontset into memory
+		for (size_t i = 0; i < FONTSET_CAP; ++i)
 		{
-			memory[VM_FONTSET_START_ADDRESS + i] = fontset[i];
+			m_am[FONTSET_START_ADDR + i] = FONTSET[i];
 		}
 
-		// Initialize RNG (std::uniform_int_distribution requires standard integer types)
-		random_byte = std::uniform_int_distribution<int>(0, 0xFF);
-
-		// Set up function pointer table
-		table[0x0] = &Chip8::Table0;
-		table[0x1] = &Chip8::OP_1NNN;
-		table[0x2] = &Chip8::OP_2NNN;
-		table[0x3] = &Chip8::OP_3XNN;
-		table[0x4] = &Chip8::OP_4XNN;
-		table[0x5] = &Chip8::OP_5XY0;
-		table[0x6] = &Chip8::OP_6XNN;
-		table[0x7] = &Chip8::OP_7XNN;
-		table[0x8] = &Chip8::Table8;
-		table[0x9] = &Chip8::OP_9XY0;
-		table[0xA] = &Chip8::OP_ANNN;
-		table[0xB] = &Chip8::OP_BNNN;
-		table[0xC] = &Chip8::OP_CXNN;
-		table[0xD] = &Chip8::OP_DXYN;
-		table[0xE] = &Chip8::TableE;
-		table[0xF] = &Chip8::TableF;
+		m_table[0x0] = &Chip8::table_0;
+		m_table[0x1] = &Chip8::op_1nnn;
+		m_table[0x2] = &Chip8::op_2nnn;
+		m_table[0x3] = &Chip8::op_3xkk;
+		m_table[0x4] = &Chip8::op_4xkk;
+		m_table[0x5] = &Chip8::op_5xy0;
+		m_table[0x6] = &Chip8::op_6xkk;
+		m_table[0x7] = &Chip8::op_7xkk;
+		m_table[0x8] = &Chip8::table_8;
+		m_table[0x9] = &Chip8::op_9xy0;
+		m_table[0xA] = &Chip8::op_Annn;
+		m_table[0xB] = &Chip8::op_Bnnn;
+		m_table[0xC] = &Chip8::op_Cxkk;
+		m_table[0xD] = &Chip8::op_Dxyn;
+		m_table[0xE] = &Chip8::table_E;
+		m_table[0xF] = &Chip8::table_F;
 
 		for (size_t i = 0; i <= 0xE; i++)
 		{
-			table0[i] = &Chip8::OP_NULL;
-			table8[i] = &Chip8::OP_NULL;
-			tableE[i] = &Chip8::OP_NULL;
+			m_table_0[i] = &Chip8::op_null;
+			m_table_8[i] = &Chip8::op_null;
+			m_table_E[i] = &Chip8::op_null;
 		}
 
-		table0[0x0] = &Chip8::OP_00E0;
-		table0[0xE] = &Chip8::OP_00EE;
+		m_table_0[0x0] = &Chip8::op_00E0;
+		m_table_0[0xE] = &Chip8::op_00EE;
 
-		table8[0x0] = &Chip8::OP_8XY0;
-		table8[0x1] = &Chip8::OP_8XY1;
-		table8[0x2] = &Chip8::OP_8XY2;
-		table8[0x3] = &Chip8::OP_8XY3;
-		table8[0x4] = &Chip8::OP_8XY4;
-		table8[0x5] = &Chip8::OP_8XY5;
-		table8[0x6] = &Chip8::OP_8XY6;
-		table8[0x7] = &Chip8::OP_8XY7;
-		table8[0xE] = &Chip8::OP_8XYE;
+		m_table_8[0x0] = &Chip8::op_8xy0;
+		m_table_8[0x1] = &Chip8::op_8xy1;
+		m_table_8[0x2] = &Chip8::op_8xy2;
+		m_table_8[0x3] = &Chip8::op_8xy3;
+		m_table_8[0x4] = &Chip8::op_8xy4;
+		m_table_8[0x5] = &Chip8::op_8xy5;
+		m_table_8[0x6] = &Chip8::op_8xy6;
+		m_table_8[0x7] = &Chip8::op_8xy7;
+		m_table_8[0xE] = &Chip8::op_8xyE;
 
-		tableE[0x1] = &Chip8::OP_EXA1;
-		tableE[0xE] = &Chip8::OP_EX9E;
+		m_table_E[0x1] = &Chip8::op_ExA1;
+		m_table_E[0xE] = &Chip8::op_Ex9E;
 
 		for (size_t i = 0; i <= 0x65; i++)
 		{
-			tableF[i] = &Chip8::OP_NULL;
+			m_table_F[i] = &Chip8::op_null;
 		}
 
-		tableF[0x07] = &Chip8::OP_FX07;
-		tableF[0x0A] = &Chip8::OP_FX0A;
-		tableF[0x15] = &Chip8::OP_FX15;
-		tableF[0x18] = &Chip8::OP_FX18;
-		tableF[0x1E] = &Chip8::OP_FX1E;
-		tableF[0x29] = &Chip8::OP_FX29;
-		tableF[0x33] = &Chip8::OP_FX33;
-		tableF[0x55] = &Chip8::OP_FX55;
-		tableF[0x65] = &Chip8::OP_FX65;
+		m_table_F[0x07] = &Chip8::op_Fx07;
+		m_table_F[0x0A] = &Chip8::op_Fx0A;
+		m_table_F[0x15] = &Chip8::op_Fx15;
+		m_table_F[0x18] = &Chip8::op_Fx18;
+		m_table_F[0x1E] = &Chip8::op_Fx1E;
+		m_table_F[0x29] = &Chip8::op_Fx29;
+		m_table_F[0x33] = &Chip8::op_Fx33;
+		m_table_F[0x55] = &Chip8::op_Fx55;
+		m_table_F[0x65] = &Chip8::op_Fx65;
 	}
 
-	~Chip8()
-	{
-	}
+	~Chip8() = default;
 
-	void LoadROM(std::string filename)
+	void load_rom(const std::string& filename)
 	{
-		std::ifstream file(filename, std::ios::binary | std::ios::ate);
-
-		if (file.is_open())
+		if (std::ifstream file(filename, std::ios::binary | std::ios::ate); file.is_open())
 		{
 			const std::streampos size = file.tellg();
-			char* buffer = new char[size];
+			const auto buffer = new char[size];
 
 			file.seekg(0, std::ios::beg);
 			file.read(buffer, size);
 			file.close();
 
-			for (size_t i = 0; i < size; ++i)
+			for (size_t i = 0; i < static_cast<size_t>(size); ++i)
 			{
-				memory[VM_MEMORY_ROM_START_ADDRESS + i] = buffer[i];
+				m_am[IN_START_ADDR + i] = buffer[i];
 			}
 
 			delete[] buffer;
 		}
 	}
 
-	void Cycle(void)
+	void cycle()
 	{
 		// Fetch
-		opcode = (memory[pc] << 8) | memory[pc + 1];
+		m_opcode = (m_am[m_pc] << 8) | m_am[m_pc + 1];
 
 		// Increment the PC before we execute anything
-		pc += 2;
+		m_pc += 2;
 
 		// Decode and Execute
-		((*this).*(table[(opcode & 0xF000) >> 12]))();
+		(this->*m_table[(m_opcode & 0xF000) >> 12])();
 
 		// Decrement the delay timer if it's been set
-		if (delay_timer > 0)
+		if (m_dt > 0)
 		{
-			--delay_timer;
+			--m_dt;
 		}
 
 		// Decrement the sound timer if it's been set
-		if (sound_timer > 0)
+		if (m_st > 0)
 		{
-			--sound_timer;
+			--m_st;
 		}
 	}
 
-	void OP_0NNN(void) {}
-
-	void OP_00E0(void)
+	void table_0()
 	{
-		memset(video, 0, VM_VIDEO_BUFFER_CAPACITY);
+		(this->*m_table_0[m_opcode & 0x000F])();
 	}
 
-	void OP_00EE(void)
+	void table_8()
 	{
-		--sp;
-		pc = stack[sp];
+		(this->*m_table_8[m_opcode & 0x000F])();
 	}
 
-	void OP_1NNN(void)
+	void table_E()
 	{
-		pc = opcode & 0x0FFF;
+		(this->*m_table_E[m_opcode & 0x000F])();
 	}
 
-	void OP_2NNN(void)
+	void table_F()
 	{
-		stack[sp] = pc;
-		++sp;
-
-		pc = opcode & 0x0FFF;
+		(this->*m_table_F[m_opcode & 0x00FF])();
 	}
 
-	void OP_3XNN(void)
+	void op_null()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t byte = opcode & 0x00FF;
+	}
 
-		if (registers[Vx] == byte)
+	/// @brief Jump to a machine code routine at nnn.
+	/// This instruction is only used on the old computers on which Chip-8 was
+	/// originally implemented. It is ignored by modern interpreters.
+	void op_0nnn()
+	{
+	}
+
+	/// @brief Clear the display.
+	void op_00E0()
+	{
+		memset(m_fb, 0, Chip8::FRAME_BUF_CAP);
+	}
+
+	/// @brief Return from a subroutine.
+	/// The interpreter sets the program counter to the address at the top of
+	/// the stack, then subtracts 1 from the stack pointer.
+	void op_00EE()
+	{
+		if (m_sp == 0)
 		{
-			pc += 2;
+			return;
+		}
+
+		--m_sp;
+		m_pc = m_sb[m_sp];
+	}
+
+	/// @brief Jump to location nnn.
+	/// The interpreter sets the program counter to nnn.
+	void op_1nnn()
+	{
+		m_pc = opcode_nnn();
+	}
+
+	/// @brief Call subroutine at nnn.
+	/// The interpreter increments the stack pointer, then puts the current PC
+	/// on the top of the stack. The PC is then set to nnn.
+	void op_2nnn()
+	{
+		if (m_sp >= STACK_CAP)
+		{
+			return;
+		}
+
+		m_sb[m_sp] = m_pc;
+		++m_sp;
+		m_pc = opcode_nnn();
+	}
+
+	/// @brief Skip next instruction if Vx = kk.
+	/// The interpreter compares register Vx to kk, and if they are equal,
+	/// increments the program counter by 2.
+	void op_3xkk()
+	{
+		const uint8_t x = opcode_x();
+		const uint8_t kk = opcode_kk();
+
+		if (m_V[x] == kk)
+		{
+			m_pc += 2;
 		}
 	}
 
-	void OP_4XNN(void)
+	/// @brief Skip next instruction if Vx != kk.
+	/// The interpreter compares register Vx to kk, and if they are not equal,
+	/// increments the program counter by 2.
+	void op_4xkk()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t byte = opcode & 0x00FF;
+		const uint8_t x = opcode_x();
+		const uint8_t kk = opcode_kk();
 
-		if (registers[Vx] != byte)
+		if (m_V[x] != kk)
 		{
-			pc += 2;
+			m_pc += 2;
 		}
 	}
 
-	void OP_5XY0(void)
+	/// @brief Skip next instruction if Vx = Vy.
+	/// The interpreter compares register Vx to register Vy, and if they are
+	/// equal, increments the program counter by 2.
+	void op_5xy0()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
 
-		if (registers[Vx] == registers[Vy])
+		if (m_V[x] == m_V[y])
 		{
-			pc += 2;
+			m_pc += 2;
 		}
 	}
 
-	void OP_6XNN(void)
+	/// @brief Set Vx = kk.
+	/// The interpreter puts the value kk into register Vx.
+	void op_6xkk()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t byte = opcode & 0x00FF;
+		const uint8_t x = opcode_x();
+		const uint8_t kk = opcode_kk();
 
-		registers[Vx] = byte;
+		m_V[x] = kk;
 	}
 
-	void OP_7XNN(void)
+	/// @brief Set Vx = Vx + kk.
+	/// Adds the value kk to the value of register Vx, then stores the result
+	/// in Vx.
+	void op_7xkk()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t byte = opcode & 0x00FF;
+		const uint8_t x = opcode_x();
+		const uint8_t kk = opcode_kk();
 
-		registers[Vx] += byte;
+		m_V[x] += kk;
 	}
 
-	void OP_8XY0(void)
+	/// @brief Set Vx = Vy.
+	/// Stores the value of register Vy in register Vx.
+	void op_8xy0()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
 
-		registers[Vx] = registers[Vy];
+		m_V[x] = m_V[y];
 	}
 
-	void OP_8XY1(void)
+	/// @brief Set Vx = Vx OR Vy.
+	/// Performs a bitwise OR on the values of Vx and Vy, then stores the result
+	/// in Vx. A bitwise OR compares the corresponding bits from two values, and
+	/// if either bit is 1, then the same bit in the result is also 1.
+	/// Otherwise, it is 0.
+	void op_8xy1()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
 
-		registers[Vx] |= registers[Vy];
+		m_V[x] |= m_V[y];
 	}
 
-	void OP_8XY2(void)
+	/// @brief Set Vx = Vx AND Vy.
+	/// Performs a bitwise AND on the values of Vx and Vy, then stores the
+	/// result in Vx. A bitwise AND compares the corresponding bits from two
+	/// values, and if both bits are 1, then the same bit in the result is
+	/// also 1. Otherwise, it is 0.
+	void op_8xy2()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
 
-		registers[Vx] &= registers[Vy];
+		m_V[x] &= m_V[y];
 	}
 
-	void OP_8XY3(void)
+	/// @brief Set Vx = Vx XOR Vy.
+	/// Performs a bitwise exclusive OR on the values of Vx and Vy, then stores
+	/// the result in Vx. An exclusive OR compares the corresponding bits from
+	/// two values, and if the bits are not both the same, then the
+	/// corresponding bit in the result is set to 1. Otherwise, it is 0.
+	void op_8xy3()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
 
-		registers[Vx] ^= registers[Vy];
+		m_V[x] ^= m_V[y];
 	}
 
-	void OP_8XY4(void)
+	/// @brief Set Vx = Vx + Vy, set VF = carry.
+	/// The values of Vx and Vy are added together.
+	/// If the result is greater than 8 bits (i.e., > 255), VF is set to 1,
+	/// otherwise 0. Only the lowest 8 bits of the result are kept, and stored
+	/// in Vx.
+	void op_8xy4()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
+		const uint16_t result = m_V[x] + m_V[y];
+		const uint8_t carry = result > UINT8_MAX;
 
-		const uint16_t sum = registers[Vx] + registers[Vy];
+		m_V[NUM_REGISTERS - 1] = carry;
+		m_V[x] = static_cast<uint8_t>(result & 0x00FF);
+	}
 
-		if (sum > 255)
+	/// @brief Set Vx = Vx - Vy, set VF = NOT borrow.
+	/// If Vx > Vy, then VF is set to 1, otherwise 0.
+	/// Then Vy is subtracted from Vx, and the results stored in Vx.
+	void op_8xy5()
+	{
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
+
+		m_V[NUM_REGISTERS - 1] = m_V[x] > m_V[y];
+		m_V[x] -= m_V[y];
+	}
+
+	/// @brief Set Vx = Vx SHR 1.
+	/// If the least-significant bit of Vx is 1, then VF is set to 1,
+	/// otherwise 0. Then Vx is divided by 2.
+	void op_8xy6()
+	{
+		const uint8_t x = opcode_x();
+
+		m_V[NUM_REGISTERS - 1] = m_V[x] & 1;
+		m_V[x] >>= 1; // same as m_V[x] /= 2
+	}
+
+	/// @brief Set Vx = Vy - Vx, set VF = NOT borrow.
+	/// If Vy > Vx, then VF is set to 1, otherwise 0.
+	/// Then Vx is subtracted from Vy, and the results stored in Vx.
+	void op_8xy7()
+	{
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
+
+		m_V[NUM_REGISTERS - 1] = m_V[y] > m_V[x];
+		m_V[x] = m_V[y] - m_V[x];
+	}
+
+	/// @brief Set Vx = Vx SHL 1.
+	/// If the most-significant bit of Vx is 1, then VF is set to 1, otherwise
+	/// to 0. Then Vx is multiplied by 2.
+	void op_8xyE()
+	{
+		const uint8_t x = opcode_x();
+
+		m_V[NUM_REGISTERS - 1] = (m_V[x] & 0x80) >> 7;
+		m_V[x] <<= 1; // same as m_V[x] *= 2
+	}
+
+	/// @brief Skip next instruction if Vx != Vy.
+	/// The values of Vx and Vy are compared, and if they are not equal,
+	/// the program counter is increased by 2.
+	void op_9xy0()
+	{
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
+
+		if (m_V[x] != m_V[y])
 		{
-			registers[0x0F] = 1;
+			m_pc += 2;
 		}
-		else
+	}
+
+	/// @brief Set I = nnn.
+	/// The value of register I is set to nnn.
+	void op_Annn()
+	{
+		m_Vi = opcode_nnn();
+	}
+
+	/// @brief Jump to location nnn + V0.
+	/// The program counter is set to nnn plus the value of V0.
+	void op_Bnnn()
+	{
+		const uint16_t nnn = opcode_nnn();
+
+		m_pc = nnn + m_V[0];
+	}
+
+	/// @brief Set Vx = random byte AND kk.
+	/// The interpreter generates a random number from 0 to 255, which is then
+	/// ANDed with the value kk. The results are stored in Vx. See instruction
+	/// 8xy2 for more information on AND.
+	void op_Cxkk()
+	{
+		const uint8_t r = m_be();
+		const uint8_t x = opcode_x();
+		const uint8_t kk = opcode_kk();
+
+		m_V[x] = r & kk;
+	}
+
+	/// @brief Display n-byte sprite starting at memory location I at (Vx, Vy),
+	/// set VF = collision.
+	///
+	/// The interpreter reads n bytes from memory, starting at the address
+	/// stored in I. These bytes are then displayed as sprites on screen at
+	/// coordinates (Vx, Vy). Sprites are XORed onto the existing screen. If
+	/// this causes any pixels to be erased, VF is set to 1, otherwise it is
+	/// set to 0. If the sprite is positioned so part of it is outside the
+	/// coordinates of the display, it wraps around to the opposite side of the
+	/// screen. See instruction 8xy3 for more information on XOR.
+	void op_Dxyn()
+	{
+		// n in this case is the pixel height of the sprite
+		const uint8_t n = opcode_n();
+
+		const uint8_t x = opcode_x();
+		const uint8_t y = opcode_y();
+
+		const uint8_t x_pos = m_V[x] % FRAME_BUF_W;
+		const uint8_t y_pos = m_V[y] % FRAME_BUF_H;
+
+		m_V[NUM_REGISTERS - 1] = 0;
+
+		for (size_t row = 0; row < n; ++row)
 		{
-			registers[0x0F] = 0;
-		}
+			// num_cols is the pixel width of the sprite
+			constexpr size_t num_cols = 8;
+			const uint8_t sprite_byte = m_am[m_Vi + row];
 
-		registers[Vx] = sum & 0xFF;
-	}
-
-	void OP_8XY5(void)
-	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
-
-		if (registers[Vx] > registers[Vy])
-		{
-			registers[0x0F] = 1;
-		}
-		else
-		{
-			registers[0x0F] = 0;
-		}
-
-		registers[Vx] -= registers[Vy];
-	}
-
-	void OP_8XY6(void)
-	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-
-		// Save LSB in VF
-		registers[0xF] = (registers[Vx] & 0x1);
-
-		registers[Vx] >>= 1;
-	}
-
-	void OP_8XY7(void)
-	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
-
-		if (registers[Vy] > registers[Vx])
-		{
-			registers[0x0F] = 1;
-		}
-		else
-		{
-			registers[0x0F] = 0;
-		}
-
-		registers[Vx] = registers[Vy] - registers[Vx];
-	}
-
-	void OP_8XYE(void)
-	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-
-		// Save MSB in VF
-		registers[0x0F] = (registers[Vx] & 0x80) >> 7;
-
-		registers[Vx] <<= 1;
-	}
-
-	void OP_9XY0(void)
-	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t Vy = (opcode & 0x00F0) >> 4;
-
-		if (registers[Vx] != registers[Vy])
-		{
-			pc += 2;
-		}
-	}
-
-	void OP_ANNN(void)
-	{
-		index = opcode & 0x0FFF;
-	}
-
-	void OP_BNNN(void)
-	{
-		pc = registers[0] + opcode & 0x0FFF;
-	}
-
-	void OP_CXNN(void)
-	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t byte = opcode & 0x00FF;
-
-		// uniform_int_distribution is instantiated with int; cast result to uint8_t
-		registers[Vx] = static_cast<uint8_t>(random_byte(random_engine) & byte);
-	}
-
-	void OP_DXYN(void)
-	{
-		uint8_t Vx = (opcode & 0x0F00) >> 8;
-		uint8_t Vy = (opcode & 0x00F0) >> 4;
-		uint8_t height = opcode & 0x000F;
-
-		// Wrap if going beyond screen boundaries
-		uint8_t x_pos = registers[Vx] % VM_VIDEO_BUFFER_W;
-		uint8_t y_pos = registers[Vy] % VM_VIDEO_BUFFER_H;
-
-		registers[0x0F] = 0;
-
-		for (size_t row = 0; row < height; ++row)
-		{
-			const uint8_t spriteByte = memory[index + row];
-
-			for (size_t col = 0; col < 8; ++col)
+			for (size_t col = 0; col < num_cols; ++col)
 			{
-				const uint8_t spritePixel = spriteByte & (0x80u >> col);
-				uint32_t* screenPixel = (uint32_t*)&video[(y_pos + row) * VM_VIDEO_BUFFER_W + (x_pos + col)];
+				const uint8_t sprite_pixel = sprite_byte & (0x80 >> col);
 
-				// Sprite pixel is on
-				if (spritePixel != 0)
+				if (sprite_pixel == 0)
 				{
-					// Screen pixel also on - collision
-					if (*screenPixel == 0xFFFFFFFF)
-					{
-						registers[0x0F] = 1;
-					}
-
-					// Effectively XOR with the sprite pixel
-					*screenPixel ^= 0xFFFFFFFF;
+					continue;
 				}
+
+				const size_t screen_x = (x_pos + col) % FRAME_BUF_W;
+				const size_t screen_y = (y_pos + row) % FRAME_BUF_H;
+				const size_t pixel_idx = screen_y * FRAME_BUF_W + screen_x;
+
+				if (m_fb[pixel_idx] == 1)
+				{
+					m_V[NUM_REGISTERS - 1] = 1;
+				}
+
+				m_fb[pixel_idx] ^= 1;
 			}
 		}
 	}
 
-	void OP_EX9E(void)
+	/// @brief Skip the next instruction if a key with the value of Vx is pressed.
+	/// Checks the keyboard, and if the key corresponding to the value of Vx is
+	/// currently in the down position, PC is increased by 2.
+	void op_Ex9E()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t key = registers[Vx];
+		const uint8_t x = opcode_x();
 
-		if (keypad[key])
+		if (m_kp[m_V[x]])
 		{
-			pc += 2;
+			m_pc += 2;
 		}
 	}
 
-	void OP_EXA1(void)
+	/// @brief Skip the next instruction if the key with the value of Vx is not pressed.
+	/// Checks the keyboard, and if the key corresponding to the value of Vx is
+	/// currently in the up position, PC is increased by 2.
+	void op_ExA1()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t key = registers[Vx];
+		const uint8_t x = opcode_x();
 
-		if (keypad[key] == 0)
+		if (!m_kp[m_V[x]])
 		{
-			pc += 2;
+			m_pc += 2;
 		}
 	}
 
-	void OP_FX07(void)
+	/// @brief Set Vx = delay timer value.
+	/// The value of DT is placed into Vx.
+	void op_Fx07()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
+		const uint8_t x = opcode_x();
 
-		registers[Vx] = delay_timer;
+		m_V[x] = m_dt;
 	}
 
-	void OP_FX0A(void)
+	/// @brief Wait for a key press, store the value of the key in Vx.
+	/// All execution stops until a key is pressed, then the value of that key
+	/// is stored in Vx.
+	void op_Fx0A()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
+		const uint8_t x = opcode_x();
 
-		if (keypad[0])
+		for (size_t i = 0; i < KEYPAD_CAP; ++i)
 		{
-			registers[Vx] = 0;
+			if (m_kp[i])
+			{
+				m_V[x] = i;
+				return;
+			}
 		}
-		else if (keypad[1])
-		{
-			registers[Vx] = 1;
-		}
-		else if (keypad[2])
-		{
-			registers[Vx] = 2;
-		}
-		else if (keypad[3])
-		{
-			registers[Vx] = 3;
-		}
-		else if (keypad[4])
-		{
-			registers[Vx] = 4;
-		}
-		else if (keypad[5])
-		{
-			registers[Vx] = 5;
-		}
-		else if (keypad[6])
-		{
-			registers[Vx] = 6;
-		}
-		else if (keypad[7])
-		{
-			registers[Vx] = 7;
-		}
-		else if (keypad[8])
-		{
-			registers[Vx] = 8;
-		}
-		else if (keypad[9])
-		{
-			registers[Vx] = 9;
-		}
-		else if (keypad[10])
-		{
-			registers[Vx] = 10;
-		}
-		else if (keypad[11])
-		{
-			registers[Vx] = 11;
-		}
-		else if (keypad[12])
-		{
-			registers[Vx] = 12;
-		}
-		else if (keypad[13])
-		{
-			registers[Vx] = 13;
-		}
-		else if (keypad[14])
-		{
-			registers[Vx] = 14;
-		}
-		else if (keypad[15])
-		{
-			registers[Vx] = 15;
-		}
-		else
-		{
-			pc -= 2;
-		}
+
+		// Loop back to the Fx0A instruction
+		m_pc -= 2;
 	}
 
-	void OP_FX15(void)
+	/// @brief Set delay timer = Vx.
+	/// DT is set equal to the value of Vx.
+	void op_Fx15()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
+		const uint8_t x = opcode_x();
 
-		delay_timer = registers[Vx];
-	}
-	void OP_FX18(void)
-	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-
-		sound_timer = registers[Vx];
+		m_dt = m_V[x];
 	}
 
-	void OP_FX1E(void)
+	/// @brief Set sound timer = Vx.
+	/// ST is set equal to the value of Vx.
+	void op_Fx18()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
+		const uint8_t x = opcode_x();
 
-		index += registers[Vx];
+		m_st = m_V[x];
 	}
 
-	void OP_FX29(void)
+	/// @brief Set I = I + Vx.
+	/// The values of I and Vx are added, and the results are stored in I.
+	void op_Fx1E()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
-		const uint8_t digit = registers[Vx];
+		const uint8_t x = opcode_x();
 
-		index = VM_FONTSET_START_ADDRESS + (5 * digit);
+		m_Vi += m_V[x];
 	}
 
-	void OP_FX33(void)
+	/// @brief Set I = location of sprite for digit Vx.
+	/// The value of I is set to the location for the hexadecimal sprite
+	/// corresponding to the value of Vx.
+	void op_Fx29()
 	{
-		uint8_t Vx = (opcode & 0x0F00) >> 8;
-		uint8_t value = registers[Vx];
+		const uint8_t x = opcode_x();
+		constexpr uint8_t byte_height{5};
 
-		// Ones-place
-		memory[index + 2] = value % 10;
-		value /= 10;
-
-		// Tens-place
-		memory[index + 1] = value % 10;
-		value /= 10;
-
-		// Hundreds-place
-		memory[index] = value % 10;
+		m_Vi = FONTSET_START_ADDR + byte_height * m_V[x];
 	}
 
-	void OP_FX55(void)
+	/// @brief Store BCD representation of Vx in memory locations I, I+1, and I+2.
+	/// The interpreter takes the decimal value of Vx, and places the hundreds
+	/// digit in memory at location in I, the tens digit at location I+1, and
+	/// the ones digit at location I+2.
+	void op_Fx33()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
+		const uint8_t x = opcode_x();
+		uint8_t Vx = m_V[x];
 
-		for (uint8_t i = 0; i <= Vx; ++i)
+		m_am[m_Vi] = static_cast<uint8_t>(Vx / 100);
+		Vx %= 100;
+
+		m_am[m_Vi + 1] = static_cast<uint8_t>(Vx / 10);
+		Vx %= 10;
+
+		m_am[m_Vi + 2] = Vx;
+	}
+
+	/// @brief Store registers V0 through Vx in memory starting at location I.
+	/// The interpreter copies the values of registers V0 through Vx into
+	/// memory, starting at the address in I.
+	void op_Fx55()
+	{
+		const uint8_t x = opcode_x();
+
+		for (size_t i = 0; i <= x; ++i)
 		{
-			memory[index + i] = registers[i];
+			m_am[m_Vi + i] = m_V[i];
 		}
 	}
 
-	void OP_FX65(void)
+	/// @brief Read registers V0 through Vx from memory starting at location I.
+	/// The interpreter reads values from memory starting at location I into
+	/// registers V0 through Vx.
+	void op_Fx65()
 	{
-		const uint8_t Vx = (opcode & 0x0F00) >> 8;
+		const uint8_t x = opcode_x();
 
-		for (uint8_t i = 0; i <= Vx; ++i)
+		for (size_t i = 0; i <= x; ++i)
 		{
-			registers[i] = memory[index + i];
+			m_V[i] = m_am[m_Vi + i];
 		}
 	}
-
-	void Table0()
-	{
-		((*this).*(table0[opcode & 0x000F]))();
-	}
-
-	void Table8()
-	{
-		((*this).*(table8[opcode & 0x000F]))();
-	}
-
-	void TableE()
-	{
-		((*this).*(tableE[opcode & 0x000F]))();
-	}
-
-	void TableF()
-	{
-		((*this).*(tableF[opcode & 0x00FF]))();
-	}
-
-	void OP_NULL()
-	{
-	}
-
-	typedef void (Chip8::* Chip8Func)();
-	Chip8Func table[0x0F + 1];
-	Chip8Func table0[0x0E + 1];
-	Chip8Func table8[0x0E + 1];
-	Chip8Func tableE[0x0E + 1];
-	Chip8Func tableF[0x65 + 1];
-
-	std::default_random_engine random_engine;
-	std::uniform_int_distribution<int> random_byte;
-
-	uint8_t memory[VM_MEMORY_CAPACITY]{};
-	uint8_t registers[VM_REGISTERS_CAPACITY]{};
-	uint16_t index{}; // Index Register
-	uint16_t pc{}; // Program Counter
-	uint16_t stack[VM_STACK_CAPACITY]{};
-	uint8_t sp{}; // Stack Pointer
-	uint8_t delay_timer{};
-	uint8_t sound_timer{};
-	uint8_t keypad[VM_KEYPAD_CAPACITY]{};
-	uint8_t video[VM_VIDEO_BUFFER_CAPACITY]{};
-	uint16_t opcode{};
 };
