@@ -67,18 +67,18 @@ void Platform::update_audio(bool is_playing)
 
 void Platform::update(const uint8_t* buffer)
 {
-	std::vector<std::uint8_t> rgba_pixels(Chip8::FRAME_BUF_W * Chip8::FRAME_BUF_H * 4);
+	constexpr size_t total_pixels = Chip8::FRAME_BUF_W * Chip8::FRAME_BUF_H;
 
-	for (size_t i = 0; i < Chip8::FRAME_BUF_W * Chip8::FRAME_BUF_H; ++i)
+	for (size_t i = 0; i < total_pixels; ++i)
 	{
 		const uint8_t color = buffer[i] ? 255 : 0;
-		rgba_pixels[i * 4 + 0] = color;
-		rgba_pixels[i * 4 + 1] = color;
-		rgba_pixels[i * 4 + 2] = color;
-		rgba_pixels[i * 4 + 3] = 255;
+		m_rgba_pixels[i * 4 + 0] = color;
+		m_rgba_pixels[i * 4 + 1] = color;
+		m_rgba_pixels[i * 4 + 2] = color;
+		m_rgba_pixels[i * 4 + 3] = 255;
 	}
 
-	m_texture.update(rgba_pixels.data());
+	m_texture.update(m_rgba_pixels.data());
 	m_window.clear();
 	m_window.draw(m_sprite);
 	m_window.display();

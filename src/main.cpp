@@ -1,25 +1,84 @@
 #include <chrono>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include "chip8.hpp"
 #include "platform.hpp"
 
+namespace
+{
+void print_usage(const char* program_name)
+{
+	std::cout << "CHIP-8 Emulator\n"
+	          << "Usage: " << program_name << " <ROM> [Scale] [ClockHz]\n\n"
+	          << "Arguments:\n"
+	          << "  <ROM>     Path to the CHIP-8 ROM file (.ch8)\n"
+	          << "  [Scale]   Window scale factor (integer, default: 15)\n"
+	          << "  [ClockHz] CPU clock frequency in Hz (integer, default: 700)\n\n"
+	          << "Options:\n"
+	          << "  -h, --help  Display this help message and exit\n\n"
+	          << "Example:\n"
+	          << "  " << program_name << " share/flightrunner.ch8\n"
+	          << "  " << program_name << " share/octojam1title.ch8 20 600\n";
+}
+} // namespace
+
 int main(int argc, char** argv)
 {
-	if (argc != 4)
+	if (argc < 2)
 	{
-		std::cerr << "Usage: " << argv[0] << " <Scale> <Delay> <ROM>\n";
-		std::exit(EXIT_FAILURE);
+		print_usage(argv[0]);
+		return EXIT_FAILURE;
 	}
 
-	int video_scale = std::stoi(argv[1]);
-	int cycle_delay = std::stoi(argv[2]);
-	char const* rom_filename = argv[3];
+	const std::string_view first_arg = argv[1];
+	if (first_arg == "-h" || first_arg == "--help")
+	{
+		print_usage(argv[0]);
+		return EXIT_SUCCESS;
+	}
 
-	Platform platform("CHIP-8 Emulator", Chip8::FRAME_BUF_W * video_scale, Chip8::FRAME_BUF_H * video_scale,
-	                  Chip8::FRAME_BUF_W, Chip8::FRAME_BUF_H);
+	const std::string_view rom_filename = argv[1];
+	int video_scale = 15;
+	int clock_hz = 700;
+
+	if (argc >= 3)
+	{
+		try
+		{
+			video_scale = std::stoi(argv[2]);
+			if (video_scale <= 0)
+			{
+				std::cerr << "Error: Video scale must be positive.\n";
+				return EXIT_FAILURE;
+			}
+		}
+		catch (const std::exception&)
+		{
+			std::cerr << "Error: Invalid video scale '" << argv[2] << "'. Must be an integer.\n";
+			return EXIT_FAILURE;
+		}
+	}
+
+	if (argc >= 4)
+	{
+		try
+		{
+			clock_hz = std::stoi(argv[3]);
+			if (clock_hz <= 0)
+			{
+				std::cerr << "Error: Clock frequency must be positive.\n";
+				return EXIT_FAILURE;
+			}
+		}
+		catch (const std::exception&)
+		{
+			std::cerr << "Error: Invalid clock frequency '" << argv[3] << "'. Must be an integer.\n";
+			return EXIT_FAILURE;
+		}
+	}
 
 	Chip8 chip8;
 	if (!chip8.load_rom(rom_filename))
@@ -27,8 +86,14 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
+	Platform platform("CHIP-8 Emulator",
+	                  Chip8::FRAME_BUF_W * video_scale,
+	                  Chip8::FRAME_BUF_H * video_scale,
+	                  Chip8::FRAME_BUF_W,
+	                  Chip8::FRAME_BUF_H);
+
 	constexpr double timer_tick_duration = 1.0 / 60.0;
-	const double cpu_cycle_duration = cycle_delay > 0 ? (cycle_delay / 1000.0) : (1.0 / 700.0);
+	const double cpu_cycle_duration = 1.0 / static_cast<double>(clock_hz);
 
 	auto last_time = std::chrono::steady_clock::now();
 	double cpu_accumulator = 0.0;
@@ -74,5 +139,5 @@ int main(int argc, char** argv)
 		std::this_thread::sleep_for(std::chrono::microseconds(500));
 	}
 
-	return 0;
+	return EXIT_SUCCESS;
 }

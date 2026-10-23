@@ -2,6 +2,7 @@
 
 #include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
+#include <array>
 #include <cstdint>
 #include <optional>
 
@@ -23,6 +24,7 @@ private:
 	sf::RenderWindow m_window;
 	sf::Texture m_texture;
 	sf::Sprite m_sprite;
+	std::array<uint8_t, Chip8::FRAME_BUF_W * Chip8::FRAME_BUF_H * 4> m_rgba_pixels{};
 
 	sf::SoundBuffer m_beep_buffer;
 	std::optional<sf::Sound> m_beep_sound;
