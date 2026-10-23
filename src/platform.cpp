@@ -1,5 +1,6 @@
 #include "platform.hpp"
 
+#include <cmath>
 #include <vector>
 
 Platform::Platform(const char* title, const int window_width, const int window_height, const int texture_width,
@@ -15,6 +16,53 @@ Platform::Platform(const char* title, const int window_width, const int window_h
 	const float scale_x = static_cast<float>(window_width) / static_cast<float>(texture_width);
 	const float scale_y = static_cast<float>(window_height) / static_cast<float>(texture_height);
 	m_sprite.setScale(sf::Vector2f(scale_x, scale_y));
+
+	init_audio();
+}
+
+void Platform::init_audio()
+{
+	constexpr unsigned int sample_rate = 8000;
+	constexpr double frequency = 440.0;
+	constexpr unsigned int sample_count = sample_rate / 2; // 0.5s buffer
+	constexpr std::int16_t amplitude = 6000;
+
+	std::vector<std::int16_t> samples(sample_count);
+	for (size_t i = 0; i < sample_count; ++i)
+	{
+		const double t = static_cast<double>(i) / sample_rate;
+		const double sin_val = std::sin(2.0 * 3.14159265358979323846 * frequency * t);
+		samples[i] = sin_val >= 0 ? amplitude : -amplitude;
+	}
+
+	if (m_beep_buffer.loadFromSamples(samples.data(), samples.size(), 1, sample_rate, {sf::SoundChannel::Mono}))
+	{
+		m_beep_sound.emplace(m_beep_buffer);
+		m_beep_sound->setLooping(true);
+	}
+}
+
+void Platform::update_audio(bool is_playing)
+{
+	if (!m_beep_sound.has_value())
+	{
+		return;
+	}
+
+	if (is_playing)
+	{
+		if (m_beep_sound->getStatus() != sf::Sound::Status::Playing)
+		{
+			m_beep_sound->play();
+		}
+	}
+	else
+	{
+		if (m_beep_sound->getStatus() == sf::Sound::Status::Playing)
+		{
+			m_beep_sound->stop();
+		}
+	}
 }
 
 void Platform::update(const uint8_t* buffer)

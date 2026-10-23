@@ -1,5 +1,6 @@
 #pragma once
 
+#include <SFML/Audio.hpp>
 #include <SFML/Graphics.hpp>
 #include <cstdint>
 #include <optional>
@@ -13,10 +14,16 @@ public:
 	~Platform() = default;
 
 	void update(const uint8_t* buffer);
+	void update_audio(bool is_playing);
 	bool process_input(Chip8& chip8);
 
 private:
+	void init_audio();
+
 	sf::RenderWindow m_window;
 	sf::Texture m_texture;
 	sf::Sprite m_sprite;
+
+	sf::SoundBuffer m_beep_buffer;
+	std::optional<sf::Sound> m_beep_sound;
 };

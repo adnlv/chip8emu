@@ -63,6 +63,8 @@ int main(int argc, char** argv)
 			timer_accumulator -= timer_tick_duration;
 		}
 
+		platform.update_audio(chip8.is_sound_playing());
+
 		if (chip8.draw_flag())
 		{
 			platform.update(chip8.get_frame_buffer());
