@@ -1,4 +1,4 @@
-﻿cmake_minimum_required (VERSION 3.28)
+cmake_minimum_required (VERSION 3.28)
 
 # Enable Hot Reload for MSVC compilers if supported.
 if(POLICY CMP0141)
@@ -17,6 +17,7 @@ FetchContent_Declare(SFML
     SYSTEM)
 FetchContent_MakeAvailable(SFML)
 
-add_executable(chip8emu chip8emu.cpp)
+add_executable(chip8emu src/main.cpp)
+target_include_directories(chip8emu PRIVATE src)
 target_compile_features(chip8emu PRIVATE cxx_std_20)
-target_link_libraries(chip8emu PRIVATE SFML::Graphics)
+target_link_libraries(chip8emu PRIVATE SFML::Graphics SFML::Audio)
