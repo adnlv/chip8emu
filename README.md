@@ -127,15 +127,19 @@ cmake --build .
 ## Usage
 
 ```bash
+chip8emu <ROM> [options]
 chip8emu <ROM> [Scale] [ClockHz]
 ```
 
 ### Options & Arguments
 
 - `<ROM>`: Path to the `.ch8` ROM file (*required*).
-- `[Scale]`: Window scale multiplier (*optional*, default: `15` $\rightarrow 960 \times 480$).
-- `[ClockHz]`: CPU clock frequency in instructions per second (*optional*, default: `700` Hz).
+- `-s`, `--scale <factor>`: Window scale factor (*optional*, default: `15` $\rightarrow 960 \times 480$).
+- `-c`, `--clock <Hz>`: CPU clock frequency in instructions per second (*optional*, default: `700` Hz).
 - `-h`, `--help`: Show usage instructions and exit.
+
+> [!NOTE]
+> Positional arguments are also supported for backwards compatibility: `chip8emu <ROM> [Scale] [ClockHz]`.
 
 ### Examples
 
@@ -143,8 +147,11 @@ chip8emu <ROM> [Scale] [ClockHz]
 # Run with default settings (15x scale, 700 Hz)
 ./chip8emu share/octojam1title.ch8
 
-# Run with custom 20x scale and 600 Hz clock speed
-./chip8emu share/flightrunner.ch8 20 600
+# Run with flags
+./chip8emu share/flightrunner.ch8 --scale 20 --clock 600
+
+# Short flags
+./chip8emu share/petdog.ch8 -s 20 -c 500
 
 # View built-in help
 ./chip8emu --help

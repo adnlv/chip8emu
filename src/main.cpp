@@ -12,16 +12,40 @@ namespace
 void print_usage(const char* program_name)
 {
 	std::cout << "CHIP-8 Emulator\n"
-	          << "Usage: " << program_name << " <ROM> [Scale] [ClockHz]\n\n"
+	          << "Usage: " << program_name << " <ROM> [options]\n"
+	          << "       " << program_name << " <ROM> [Scale] [ClockHz]\n\n"
 	          << "Arguments:\n"
-	          << "  <ROM>     Path to the CHIP-8 ROM file (.ch8)\n"
-	          << "  [Scale]   Window scale factor (integer, default: 15)\n"
-	          << "  [ClockHz] CPU clock frequency in Hz (integer, default: 700)\n\n"
+	          << "  <ROM>                 Path to the CHIP-8 ROM file (.ch8)\n\n"
 	          << "Options:\n"
-	          << "  -h, --help  Display this help message and exit\n\n"
-	          << "Example:\n"
+	          << "  -s, --scale <factor>  Window scale factor (integer, default: 15)\n"
+	          << "  -c, --clock <Hz>      CPU clock frequency in Hz (integer, default: 700)\n"
+	          << "  -h, --help            Display this help message and exit\n\n"
+	          << "Examples:\n"
 	          << "  " << program_name << " share/flightrunner.ch8\n"
-	          << "  " << program_name << " share/octojam1title.ch8 20 600\n";
+	          << "  " << program_name << " share/octojam1title.ch8 --scale 20 --clock 600\n"
+	          << "  " << program_name << " share/petdog.ch8 -s 20\n";
+}
+
+bool parse_positive_int(std::string_view str, const char* name, int& out_val)
+{
+	try
+	{
+		size_t pos = 0;
+		const std::string s(str);
+		const int val = std::stoi(s, &pos);
+		if (pos != s.size() || val <= 0)
+		{
+			std::cerr << "Error: " << name << " must be a positive integer, got '" << str << "'.\n";
+			return false;
+		}
+		out_val = val;
+		return true;
+	}
+	catch (const std::exception&)
+	{
+		std::cerr << "Error: " << name << " must be a positive integer, got '" << str << "'.\n";
+		return false;
+	}
 }
 } // namespace
 
@@ -33,51 +57,102 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	const std::string_view first_arg = argv[1];
-	if (first_arg == "-h" || first_arg == "--help")
-	{
-		print_usage(argv[0]);
-		return EXIT_SUCCESS;
-	}
-
-	const std::string_view rom_filename = argv[1];
+	std::string_view rom_filename;
 	int video_scale = 15;
 	int clock_hz = 700;
+	int positional_index = 0;
 
-	if (argc >= 3)
+	for (int i = 1; i < argc; ++i)
 	{
-		try
+		const std::string_view arg = argv[i];
+
+		if (arg == "-h" || arg == "--help")
 		{
-			video_scale = std::stoi(argv[2]);
-			if (video_scale <= 0)
+			print_usage(argv[0]);
+			return EXIT_SUCCESS;
+		}
+		if (arg == "-s" || arg == "--scale")
+		{
+			if (i + 1 >= argc)
 			{
-				std::cerr << "Error: Video scale must be positive.\n";
+				std::cerr << "Error: Missing value for " << arg << " option.\n";
+				return EXIT_FAILURE;
+			}
+			++i;
+			if (!parse_positive_int(argv[i], "Video scale", video_scale))
+			{
 				return EXIT_FAILURE;
 			}
 		}
-		catch (const std::exception&)
+		else if (arg.starts_with("--scale=") || arg.starts_with("-s="))
 		{
-			std::cerr << "Error: Invalid video scale '" << argv[2] << "'. Must be an integer.\n";
+			const size_t eq_pos = arg.find('=');
+			if (!parse_positive_int(arg.substr(eq_pos + 1), "Video scale", video_scale))
+			{
+				return EXIT_FAILURE;
+			}
+		}
+		else if (arg == "-c" || arg == "--clock")
+		{
+			if (i + 1 >= argc)
+			{
+				std::cerr << "Error: Missing value for " << arg << " option.\n";
+				return EXIT_FAILURE;
+			}
+			++i;
+			if (!parse_positive_int(argv[i], "Clock frequency", clock_hz))
+			{
+				return EXIT_FAILURE;
+			}
+		}
+		else if (arg.starts_with("--clock=") || arg.starts_with("-c="))
+		{
+			const size_t eq_pos = arg.find('=');
+			if (!parse_positive_int(arg.substr(eq_pos + 1), "Clock frequency", clock_hz))
+			{
+				return EXIT_FAILURE;
+			}
+		}
+		else if (arg.starts_with("-"))
+		{
+			std::cerr << "Error: Unknown option '" << arg << "'.\n\n";
+			print_usage(argv[0]);
 			return EXIT_FAILURE;
+		}
+		else
+		{
+			if (positional_index == 0)
+			{
+				rom_filename = arg;
+			}
+			else if (positional_index == 1)
+			{
+				if (!parse_positive_int(arg, "Video scale", video_scale))
+				{
+					return EXIT_FAILURE;
+				}
+			}
+			else if (positional_index == 2)
+			{
+				if (!parse_positive_int(arg, "Clock frequency", clock_hz))
+				{
+					return EXIT_FAILURE;
+				}
+			}
+			else
+			{
+				std::cerr << "Error: Unexpected positional argument '" << arg << "'.\n";
+				return EXIT_FAILURE;
+			}
+			++positional_index;
 		}
 	}
 
-	if (argc >= 4)
+	if (rom_filename.empty())
 	{
-		try
-		{
-			clock_hz = std::stoi(argv[3]);
-			if (clock_hz <= 0)
-			{
-				std::cerr << "Error: Clock frequency must be positive.\n";
-				return EXIT_FAILURE;
-			}
-		}
-		catch (const std::exception&)
-		{
-			std::cerr << "Error: Invalid clock frequency '" << argv[3] << "'. Must be an integer.\n";
-			return EXIT_FAILURE;
-		}
+		std::cerr << "Error: No ROM file specified.\n\n";
+		print_usage(argv[0]);
+		return EXIT_FAILURE;
 	}
 
 	Chip8 chip8;
