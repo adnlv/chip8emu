@@ -1,7 +1,6 @@
 #include "chip8.hpp"
 
 #include <chrono>
-#include <climits>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -9,8 +8,8 @@
 #include "fontset.hpp"
 
 Chip8::Chip8()
-	: m_re(static_cast<unsigned int>(std::chrono::system_clock::now().time_since_epoch().count())),
-	  m_be(m_re())
+	: m_be(static_cast<std::mt19937::result_type>(
+	      std::chrono::system_clock::now().time_since_epoch().count()))
 {
 	m_pc = IN_START_ADDR;
 
@@ -215,10 +214,6 @@ void Chip8::op_null()
 {
 }
 
-void Chip8::op_0nnn()
-{
-}
-
 void Chip8::op_00E0()
 {
 	std::memset(m_fb, 0, FRAME_BUF_CAP);
@@ -403,7 +398,7 @@ void Chip8::op_Bnnn()
 
 void Chip8::op_Cxkk()
 {
-	const uint8_t r = m_be();
+	const uint8_t r = static_cast<uint8_t>(m_be());
 	const uint8_t x = opcode_x();
 	const uint8_t kk = opcode_kk();
 

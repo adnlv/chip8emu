@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <string_view>
 #include <random>
-#include <span>
 
 class Chip8
 {
@@ -34,8 +33,7 @@ public:
 	[[nodiscard]] bool is_key_pressed(uint8_t key) const;
 
 private:
-	std::default_random_engine m_re;
-	std::independent_bits_engine<std::mt19937, 8, uint8_t> m_be;
+	std::independent_bits_engine<std::mt19937, 8, unsigned int> m_be;
 
 	uint8_t m_V[NUM_REGISTERS]{};
 	uint16_t m_Vi{};
@@ -69,7 +67,6 @@ private:
 	void table_F();
 
 	void op_null();
-	void op_0nnn();
 	void op_00E0();
 	void op_00EE();
 	void op_1nnn();
