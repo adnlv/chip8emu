@@ -345,42 +345,46 @@ void Chip8::op_8xy4()
 	const uint16_t result = static_cast<uint16_t>(m_V[x]) + static_cast<uint16_t>(m_V[y]);
 	const uint8_t carry = result > UINT8_MAX ? 1 : 0;
 
-	m_V[NUM_REGISTERS - 1] = carry;
 	m_V[x] = static_cast<uint8_t>(result & 0x00FF);
+	m_V[NUM_REGISTERS - 1] = carry;
 }
 
 void Chip8::op_8xy5()
 {
 	const uint8_t x = opcode_x();
 	const uint8_t y = opcode_y();
+	const uint8_t not_borrow = m_V[x] >= m_V[y] ? 1 : 0;
 
-	m_V[NUM_REGISTERS - 1] = m_V[x] > m_V[y] ? 1 : 0;
 	m_V[x] -= m_V[y];
+	m_V[NUM_REGISTERS - 1] = not_borrow;
 }
 
 void Chip8::op_8xy6()
 {
 	const uint8_t x = opcode_x();
+	const uint8_t lsb = m_V[x] & 1;
 
-	m_V[NUM_REGISTERS - 1] = m_V[x] & 1;
 	m_V[x] >>= 1;
+	m_V[NUM_REGISTERS - 1] = lsb;
 }
 
 void Chip8::op_8xy7()
 {
 	const uint8_t x = opcode_x();
 	const uint8_t y = opcode_y();
+	const uint8_t not_borrow = m_V[y] >= m_V[x] ? 1 : 0;
 
-	m_V[NUM_REGISTERS - 1] = m_V[y] > m_V[x] ? 1 : 0;
 	m_V[x] = m_V[y] - m_V[x];
+	m_V[NUM_REGISTERS - 1] = not_borrow;
 }
 
 void Chip8::op_8xyE()
 {
 	const uint8_t x = opcode_x();
+	const uint8_t msb = (m_V[x] & 0x80) >> 7;
 
-	m_V[NUM_REGISTERS - 1] = (m_V[x] & 0x80) >> 7;
 	m_V[x] <<= 1;
+	m_V[NUM_REGISTERS - 1] = msb;
 }
 
 void Chip8::op_9xy0()
@@ -432,11 +436,23 @@ void Chip8::op_Dxyn()
 
 	for (size_t row = 0; row < n; ++row)
 	{
+		const size_t screen_y = y_pos + row;
+		if (screen_y >= FRAME_BUF_H)
+		{
+			break;
+		}
+
 		constexpr size_t num_cols = 8;
-		const uint8_t sprite_byte = m_am[m_Vi + row];
+		const uint8_t sprite_byte = m_am[(m_Vi + row) & (ADDR_MEM_CAP - 1)];
 
 		for (size_t col = 0; col < num_cols; ++col)
 		{
+			const size_t screen_x = x_pos + col;
+			if (screen_x >= FRAME_BUF_W)
+			{
+				break;
+			}
+
 			const uint8_t sprite_pixel = sprite_byte & (0x80 >> col);
 
 			if (sprite_pixel == 0)
@@ -444,8 +460,6 @@ void Chip8::op_Dxyn()
 				continue;
 			}
 
-			const size_t screen_x = (x_pos + col) % FRAME_BUF_W;
-			const size_t screen_y = (y_pos + row) % FRAME_BUF_H;
 			const size_t pixel_idx = screen_y * FRAME_BUF_W + screen_x;
 
 			if (m_fb[pixel_idx] == 1)
@@ -490,16 +504,25 @@ void Chip8::op_Fx0A()
 {
 	const uint8_t x = opcode_x();
 
-	for (size_t i = 0; i < KEYPAD_CAP; ++i)
+	if (!m_waiting_key.has_value())
 	{
-		if (m_kp[i])
+		for (uint8_t i = 0; i < KEYPAD_CAP; ++i)
 		{
-			m_V[x] = static_cast<uint8_t>(i);
-			return;
+			if (m_kp[i])
+			{
+				m_waiting_key = i;
+				break;
+			}
 		}
 	}
+	else if (!m_kp[*m_waiting_key])
+	{
+		m_V[x] = *m_waiting_key;
+		m_waiting_key.reset();
+		return;
+	}
 
-	m_pc -= 2;
+	m_pc = (m_pc - 2) & (ADDR_MEM_CAP - 1);
 }
 
 void Chip8::op_Fx15()

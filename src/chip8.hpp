@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 #include <random>
 
@@ -47,6 +48,7 @@ private:
 	uint16_t m_pc{};
 	uint16_t m_opcode{};
 	bool m_draw_flag{false};
+	std::optional<uint8_t> m_waiting_key{};
 
 	using Chip8OpFunc = void (Chip8::*)();
 	Chip8OpFunc m_table[0x0F + 1]{};
