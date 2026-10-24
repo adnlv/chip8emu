@@ -36,15 +36,20 @@ Chip8::Chip8()
 	m_table[0xE] = &Chip8::table_E;
 	m_table[0xF] = &Chip8::table_F;
 
-	for (size_t i = 0; i <= 0xE; i++)
+	for (size_t i = 0; i <= 0x0F; ++i)
 	{
-		m_table_0[i] = &Chip8::op_null;
 		m_table_8[i] = &Chip8::op_null;
-		m_table_E[i] = &Chip8::op_null;
 	}
 
-	m_table_0[0x0] = &Chip8::op_00E0;
-	m_table_0[0xE] = &Chip8::op_00EE;
+	for (size_t i = 0; i <= 0xFF; ++i)
+	{
+		m_table_0[i] = &Chip8::op_null;
+		m_table_E[i] = &Chip8::op_null;
+		m_table_F[i] = &Chip8::op_null;
+	}
+
+	m_table_0[0xE0] = &Chip8::op_00E0;
+	m_table_0[0xEE] = &Chip8::op_00EE;
 
 	m_table_8[0x0] = &Chip8::op_8xy0;
 	m_table_8[0x1] = &Chip8::op_8xy1;
@@ -56,13 +61,8 @@ Chip8::Chip8()
 	m_table_8[0x7] = &Chip8::op_8xy7;
 	m_table_8[0xE] = &Chip8::op_8xyE;
 
-	m_table_E[0x1] = &Chip8::op_ExA1;
-	m_table_E[0xE] = &Chip8::op_Ex9E;
-
-	for (size_t i = 0; i <= 0x65; i++)
-	{
-		m_table_F[i] = &Chip8::op_null;
-	}
+	m_table_E[0x9E] = &Chip8::op_Ex9E;
+	m_table_E[0xA1] = &Chip8::op_ExA1;
 
 	m_table_F[0x07] = &Chip8::op_Fx07;
 	m_table_F[0x0A] = &Chip8::op_Fx0A;
@@ -192,7 +192,10 @@ uint8_t Chip8::opcode_kk() const
 
 void Chip8::table_0()
 {
-	(this->*m_table_0[m_opcode & 0x000F])();
+	if ((m_opcode & 0x0F00) == 0)
+	{
+		(this->*m_table_0[m_opcode & 0x00FF])();
+	}
 }
 
 void Chip8::table_8()
@@ -202,7 +205,7 @@ void Chip8::table_8()
 
 void Chip8::table_E()
 {
-	(this->*m_table_E[m_opcode & 0x000F])();
+	(this->*m_table_E[m_opcode & 0x00FF])();
 }
 
 void Chip8::table_F()
@@ -272,6 +275,11 @@ void Chip8::op_4xkk()
 
 void Chip8::op_5xy0()
 {
+	if (opcode_n() != 0)
+	{
+		return;
+	}
+
 	const uint8_t x = opcode_x();
 	const uint8_t y = opcode_y();
 
@@ -376,6 +384,11 @@ void Chip8::op_8xyE()
 
 void Chip8::op_9xy0()
 {
+	if (opcode_n() != 0)
+	{
+		return;
+	}
+
 	const uint8_t x = opcode_x();
 	const uint8_t y = opcode_y();
 

@@ -50,10 +50,10 @@ private:
 
 	using Chip8OpFunc = void (Chip8::*)();
 	Chip8OpFunc m_table[0x0F + 1]{};
-	Chip8OpFunc m_table_0[0x0E + 1]{};
-	Chip8OpFunc m_table_8[0x0E + 1]{};
-	Chip8OpFunc m_table_E[0x0E + 1]{};
-	Chip8OpFunc m_table_F[0x65 + 1]{};
+	Chip8OpFunc m_table_0[0xFF + 1]{};
+	Chip8OpFunc m_table_8[0x0F + 1]{};
+	Chip8OpFunc m_table_E[0xFF + 1]{};
+	Chip8OpFunc m_table_F[0xFF + 1]{};
 
 	uint16_t opcode_nnn() const;
 	uint8_t opcode_n() const;
