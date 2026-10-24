@@ -106,10 +106,11 @@ bool Chip8::load_rom(std::string_view filename)
 void Chip8::cycle()
 {
 	// Fetch
-	m_opcode = (static_cast<uint16_t>(m_am[m_pc]) << 8) | m_am[m_pc + 1];
+	m_pc &= (ADDR_MEM_CAP - 1);
+	m_opcode = (static_cast<uint16_t>(m_am[m_pc]) << 8) | m_am[(m_pc + 1) & (ADDR_MEM_CAP - 1)];
 
 	// Increment the PC before execution
-	m_pc += 2;
+	m_pc = (m_pc + 2) & (ADDR_MEM_CAP - 1);
 
 	// Decode and Execute
 	(this->*m_table[(m_opcode & 0xF000) >> 12])();
@@ -406,7 +407,7 @@ void Chip8::op_Annn()
 void Chip8::op_Bnnn()
 {
 	const uint16_t nnn = opcode_nnn();
-	m_pc = nnn + m_V[0];
+	m_pc = (nnn + m_V[0]) & (ADDR_MEM_CAP - 1);
 }
 
 void Chip8::op_Cxkk()
@@ -463,9 +464,9 @@ void Chip8::op_Ex9E()
 {
 	const uint8_t x = opcode_x();
 
-	if (m_kp[m_V[x]])
+	if (is_key_pressed(m_V[x] & 0x0F))
 	{
-		m_pc += 2;
+		m_pc = (m_pc + 2) & (ADDR_MEM_CAP - 1);
 	}
 }
 
@@ -473,9 +474,9 @@ void Chip8::op_ExA1()
 {
 	const uint8_t x = opcode_x();
 
-	if (!m_kp[m_V[x]])
+	if (!is_key_pressed(m_V[x] & 0x0F))
 	{
-		m_pc += 2;
+		m_pc = (m_pc + 2) & (ADDR_MEM_CAP - 1);
 	}
 }
 
@@ -516,7 +517,7 @@ void Chip8::op_Fx18()
 void Chip8::op_Fx1E()
 {
 	const uint8_t x = opcode_x();
-	m_Vi += m_V[x];
+	m_Vi = (m_Vi + m_V[x]) & (ADDR_MEM_CAP - 1);
 }
 
 void Chip8::op_Fx29()
@@ -524,7 +525,7 @@ void Chip8::op_Fx29()
 	const uint8_t x = opcode_x();
 	constexpr uint8_t byte_height = 5;
 
-	m_Vi = FONTSET_START_ADDR + byte_height * m_V[x];
+	m_Vi = FONTSET_START_ADDR + byte_height * (m_V[x] & 0x0F);
 }
 
 void Chip8::op_Fx33()
@@ -532,13 +533,13 @@ void Chip8::op_Fx33()
 	const uint8_t x = opcode_x();
 	uint8_t Vx = m_V[x];
 
-	m_am[m_Vi] = static_cast<uint8_t>(Vx / 100);
+	m_am[m_Vi & (ADDR_MEM_CAP - 1)] = static_cast<uint8_t>(Vx / 100);
 	Vx %= 100;
 
-	m_am[m_Vi + 1] = static_cast<uint8_t>(Vx / 10);
+	m_am[(m_Vi + 1) & (ADDR_MEM_CAP - 1)] = static_cast<uint8_t>(Vx / 10);
 	Vx %= 10;
 
-	m_am[m_Vi + 2] = Vx;
+	m_am[(m_Vi + 2) & (ADDR_MEM_CAP - 1)] = Vx;
 }
 
 void Chip8::op_Fx55()
@@ -547,7 +548,7 @@ void Chip8::op_Fx55()
 
 	for (size_t i = 0; i <= x; ++i)
 	{
-		m_am[m_Vi + i] = m_V[i];
+		m_am[(m_Vi + i) & (ADDR_MEM_CAP - 1)] = m_V[i];
 	}
 }
 
@@ -557,6 +558,6 @@ void Chip8::op_Fx65()
 
 	for (size_t i = 0; i <= x; ++i)
 	{
-		m_V[i] = m_am[m_Vi + i];
+		m_V[i] = m_am[(m_Vi + i) & (ADDR_MEM_CAP - 1)];
 	}
 }
