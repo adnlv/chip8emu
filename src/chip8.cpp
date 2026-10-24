@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 
@@ -77,7 +78,15 @@ Chip8::Chip8()
 
 bool Chip8::load_rom(std::string_view filename)
 {
-	std::ifstream file(std::string(filename), std::ios::binary | std::ios::ate);
+	const std::filesystem::path rom_path(filename);
+	std::error_code ec;
+	if (!std::filesystem::is_regular_file(rom_path, ec))
+	{
+		std::cerr << "Failed to open ROM file (not a regular file): " << filename << '\n';
+		return false;
+	}
+
+	std::ifstream file(rom_path, std::ios::binary | std::ios::ate);
 	if (!file.is_open())
 	{
 		std::cerr << "Failed to open ROM file: " << filename << '\n';
@@ -99,7 +108,11 @@ bool Chip8::load_rom(std::string_view filename)
 	}
 
 	file.seekg(0, std::ios::beg);
-	file.read(reinterpret_cast<char*>(&m_am[IN_START_ADDR]), size);
+	if (!file.read(reinterpret_cast<char*>(&m_am[IN_START_ADDR]), size))
+	{
+		std::cerr << "Failed to read ROM file: " << filename << '\n';
+		return false;
+	}
 	return true;
 }
 

@@ -15,6 +15,7 @@ public:
 	~Platform() = default;
 
 	void update(const uint8_t* buffer);
+	void render();
 	void update_audio(bool is_playing);
 	bool process_input(Chip8& chip8);
 

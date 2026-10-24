@@ -17,6 +17,10 @@ Platform::Platform(const char* title, const int window_width, const int window_h
 	const float scale_y = static_cast<float>(window_height) / static_cast<float>(texture_height);
 	m_sprite.setScale(sf::Vector2f(scale_x, scale_y));
 
+	m_rgba_pixels.fill(0);
+	m_texture.update(m_rgba_pixels.data());
+	render();
+
 	init_audio();
 }
 
@@ -79,6 +83,11 @@ void Platform::update(const uint8_t* buffer)
 	}
 
 	m_texture.update(m_rgba_pixels.data());
+	render();
+}
+
+void Platform::render()
+{
 	m_window.clear();
 	m_window.draw(m_sprite);
 	m_window.display();

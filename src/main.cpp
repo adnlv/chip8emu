@@ -9,6 +9,9 @@
 
 namespace
 {
+constexpr int MAX_VIDEO_SCALE = 100;
+constexpr int MAX_CLOCK_HZ = 100000;
+
 void print_usage(const char* program_name)
 {
 	std::cout << "CHIP-8 Emulator\n"
@@ -26,16 +29,17 @@ void print_usage(const char* program_name)
 	          << "  " << program_name << " share/petdog.ch8 -s 20\n";
 }
 
-bool parse_positive_int(std::string_view str, const char* name, int& out_val)
+bool parse_positive_int(std::string_view str, const char* name, int max_val, int& out_val)
 {
 	try
 	{
 		size_t pos = 0;
 		const std::string s(str);
 		const int val = std::stoi(s, &pos);
-		if (pos != s.size() || val <= 0)
+		if (pos != s.size() || val <= 0 || val > max_val)
 		{
-			std::cerr << "Error: " << name << " must be a positive integer, got '" << str << "'.\n";
+			std::cerr << "Error: " << name << " must be an integer between 1 and " << max_val
+			          << ", got '" << str << "'.\n";
 			return false;
 		}
 		out_val = val;
@@ -43,7 +47,8 @@ bool parse_positive_int(std::string_view str, const char* name, int& out_val)
 	}
 	catch (const std::exception&)
 	{
-		std::cerr << "Error: " << name << " must be a positive integer, got '" << str << "'.\n";
+		std::cerr << "Error: " << name << " must be an integer between 1 and " << max_val
+		          << ", got '" << str << "'.\n";
 		return false;
 	}
 }
@@ -79,7 +84,7 @@ int main(int argc, char** argv)
 				return EXIT_FAILURE;
 			}
 			++i;
-			if (!parse_positive_int(argv[i], "Video scale", video_scale))
+			if (!parse_positive_int(argv[i], "Video scale", MAX_VIDEO_SCALE, video_scale))
 			{
 				return EXIT_FAILURE;
 			}
@@ -87,7 +92,7 @@ int main(int argc, char** argv)
 		else if (arg.starts_with("--scale=") || arg.starts_with("-s="))
 		{
 			const size_t eq_pos = arg.find('=');
-			if (!parse_positive_int(arg.substr(eq_pos + 1), "Video scale", video_scale))
+			if (!parse_positive_int(arg.substr(eq_pos + 1), "Video scale", MAX_VIDEO_SCALE, video_scale))
 			{
 				return EXIT_FAILURE;
 			}
@@ -100,7 +105,7 @@ int main(int argc, char** argv)
 				return EXIT_FAILURE;
 			}
 			++i;
-			if (!parse_positive_int(argv[i], "Clock frequency", clock_hz))
+			if (!parse_positive_int(argv[i], "Clock frequency", MAX_CLOCK_HZ, clock_hz))
 			{
 				return EXIT_FAILURE;
 			}
@@ -108,7 +113,7 @@ int main(int argc, char** argv)
 		else if (arg.starts_with("--clock=") || arg.starts_with("-c="))
 		{
 			const size_t eq_pos = arg.find('=');
-			if (!parse_positive_int(arg.substr(eq_pos + 1), "Clock frequency", clock_hz))
+			if (!parse_positive_int(arg.substr(eq_pos + 1), "Clock frequency", MAX_CLOCK_HZ, clock_hz))
 			{
 				return EXIT_FAILURE;
 			}
@@ -127,14 +132,14 @@ int main(int argc, char** argv)
 			}
 			else if (positional_index == 1)
 			{
-				if (!parse_positive_int(arg, "Video scale", video_scale))
+				if (!parse_positive_int(arg, "Video scale", MAX_VIDEO_SCALE, video_scale))
 				{
 					return EXIT_FAILURE;
 				}
 			}
 			else if (positional_index == 2)
 			{
-				if (!parse_positive_int(arg, "Clock frequency", clock_hz))
+				if (!parse_positive_int(arg, "Clock frequency", MAX_CLOCK_HZ, clock_hz))
 				{
 					return EXIT_FAILURE;
 				}
@@ -197,10 +202,12 @@ int main(int argc, char** argv)
 			cpu_accumulator -= cpu_cycle_duration;
 		}
 
+		bool timer_ticked = false;
 		while (timer_accumulator >= timer_tick_duration)
 		{
 			chip8.tick_timers();
 			timer_accumulator -= timer_tick_duration;
+			timer_ticked = true;
 		}
 
 		platform.update_audio(chip8.is_sound_playing());
@@ -209,6 +216,10 @@ int main(int argc, char** argv)
 		{
 			platform.update(chip8.get_frame_buffer());
 			chip8.reset_draw_flag();
+		}
+		else if (timer_ticked)
+		{
+			platform.render();
 		}
 
 		std::this_thread::sleep_for(std::chrono::microseconds(500));
