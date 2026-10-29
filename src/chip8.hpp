@@ -2,8 +2,9 @@
 
 #include <cstdint>
 #include <optional>
-#include <string_view>
 #include <random>
+#include <span>
+#include <string_view>
 
 class Chip8
 {
@@ -18,9 +19,12 @@ public:
 	static constexpr int IN_START_ADDR = 0x200;
 	static constexpr int MAX_ROM_SIZE = ADDR_MEM_CAP - IN_START_ADDR;
 
-	Chip8();
+	explicit Chip8(std::optional<unsigned int> rng_seed = std::nullopt);
 	~Chip8() = default;
 
+	void set_rng_seed(unsigned int seed);
+
+	bool load_rom(std::span<const uint8_t> data);
 	bool load_rom(std::string_view filename);
 	void cycle();
 	void tick_timers();
@@ -32,6 +36,26 @@ public:
 
 	void set_key(uint8_t key, bool pressed);
 	[[nodiscard]] bool is_key_pressed(uint8_t key) const;
+
+	[[nodiscard]] uint8_t get_register(uint8_t index) const;
+	[[nodiscard]] uint16_t get_i() const;
+	[[nodiscard]] uint16_t get_pc() const;
+	[[nodiscard]] uint8_t get_sp() const;
+	[[nodiscard]] uint16_t get_stack(uint8_t index) const;
+	[[nodiscard]] uint8_t get_delay_timer() const;
+	[[nodiscard]] uint8_t get_sound_timer() const;
+	[[nodiscard]] uint8_t get_memory(uint16_t address) const;
+	[[nodiscard]] std::span<const uint8_t> get_memory_span() const;
+
+	void set_register(uint8_t index, uint8_t value);
+	void set_i(uint16_t value);
+	void set_pc(uint16_t value);
+	void set_sp(uint8_t value);
+	void set_stack(uint8_t index, uint16_t value);
+	void set_delay_timer(uint8_t value);
+	void set_sound_timer(uint8_t value);
+	void write_memory(uint16_t address, uint8_t value);
+	void write_memory(uint16_t address, std::span<const uint8_t> bytes);
 
 private:
 	std::independent_bits_engine<std::mt19937, 8, unsigned int> m_be;

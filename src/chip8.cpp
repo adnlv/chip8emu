@@ -5,12 +5,14 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <vector>
 
 #include "fontset.hpp"
 
-Chip8::Chip8()
+Chip8::Chip8(std::optional<unsigned int> rng_seed)
 	: m_be(static_cast<std::mt19937::result_type>(
-	      std::chrono::system_clock::now().time_since_epoch().count()))
+	      rng_seed.value_or(static_cast<unsigned int>(
+	          std::chrono::system_clock::now().time_since_epoch().count()))))
 {
 	m_pc = IN_START_ADDR;
 
@@ -76,6 +78,30 @@ Chip8::Chip8()
 	m_table_F[0x65] = &Chip8::op_Fx65;
 }
 
+void Chip8::set_rng_seed(unsigned int seed)
+{
+	m_be.seed(seed);
+}
+
+bool Chip8::load_rom(std::span<const uint8_t> data)
+{
+	if (data.empty())
+	{
+		std::cerr << "ROM data is empty.\n";
+		return false;
+	}
+
+	if (data.size() > MAX_ROM_SIZE)
+	{
+		std::cerr << "ROM size (" << data.size() << " bytes) exceeds maximum available memory ("
+		          << MAX_ROM_SIZE << " bytes).\n";
+		return false;
+	}
+
+	std::memcpy(&m_am[IN_START_ADDR], data.data(), data.size());
+	return true;
+}
+
 bool Chip8::load_rom(std::string_view filename)
 {
 	const std::filesystem::path rom_path(filename);
@@ -108,12 +134,13 @@ bool Chip8::load_rom(std::string_view filename)
 	}
 
 	file.seekg(0, std::ios::beg);
-	if (!file.read(reinterpret_cast<char*>(&m_am[IN_START_ADDR]), size))
+	std::vector<uint8_t> buffer(static_cast<size_t>(size));
+	if (!file.read(reinterpret_cast<char*>(buffer.data()), size))
 	{
 		std::cerr << "Failed to read ROM file: " << filename << '\n';
 		return false;
 	}
-	return true;
+	return load_rom(buffer);
 }
 
 void Chip8::cycle()
@@ -177,6 +204,120 @@ bool Chip8::is_key_pressed(uint8_t key) const
 		return m_kp[key] != 0;
 	}
 	return false;
+}
+
+uint8_t Chip8::get_register(uint8_t index) const
+{
+	if (index < NUM_REGISTERS)
+	{
+		return m_V[index];
+	}
+	return 0;
+}
+
+uint16_t Chip8::get_i() const
+{
+	return m_Vi;
+}
+
+uint16_t Chip8::get_pc() const
+{
+	return m_pc;
+}
+
+uint8_t Chip8::get_sp() const
+{
+	return m_sp;
+}
+
+uint16_t Chip8::get_stack(uint8_t index) const
+{
+	if (index < STACK_CAP)
+	{
+		return m_sb[index];
+	}
+	return 0;
+}
+
+uint8_t Chip8::get_delay_timer() const
+{
+	return m_dt;
+}
+
+uint8_t Chip8::get_sound_timer() const
+{
+	return m_st;
+}
+
+uint8_t Chip8::get_memory(uint16_t address) const
+{
+	if (address < ADDR_MEM_CAP)
+	{
+		return m_am[address];
+	}
+	return 0;
+}
+
+std::span<const uint8_t> Chip8::get_memory_span() const
+{
+	return std::span<const uint8_t>(m_am, ADDR_MEM_CAP);
+}
+
+void Chip8::set_register(uint8_t index, uint8_t value)
+{
+	if (index < NUM_REGISTERS)
+	{
+		m_V[index] = value;
+	}
+}
+
+void Chip8::set_i(uint16_t value)
+{
+	m_Vi = value & (ADDR_MEM_CAP - 1);
+}
+
+void Chip8::set_pc(uint16_t value)
+{
+	m_pc = value & (ADDR_MEM_CAP - 1);
+}
+
+void Chip8::set_sp(uint8_t value)
+{
+	m_sp = value;
+}
+
+void Chip8::set_stack(uint8_t index, uint16_t value)
+{
+	if (index < STACK_CAP)
+	{
+		m_sb[index] = value;
+	}
+}
+
+void Chip8::set_delay_timer(uint8_t value)
+{
+	m_dt = value;
+}
+
+void Chip8::set_sound_timer(uint8_t value)
+{
+	m_st = value;
+}
+
+void Chip8::write_memory(uint16_t address, uint8_t value)
+{
+	if (address < ADDR_MEM_CAP)
+	{
+		m_am[address] = value;
+	}
+}
+
+void Chip8::write_memory(uint16_t address, std::span<const uint8_t> bytes)
+{
+	for (size_t i = 0; i < bytes.size() && (address + i) < ADDR_MEM_CAP; ++i)
+	{
+		m_am[address + i] = bytes[i];
+	}
 }
 
 uint16_t Chip8::opcode_nnn() const
