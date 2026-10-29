@@ -68,3 +68,4 @@ TEST(Chip8InitTest, LoadRomRejectsOversizedSpan)
 	const std::vector<uint8_t> oversized_rom(Chip8::MAX_ROM_SIZE + 1, 0xFF);
 	EXPECT_FALSE(chip8.load_rom(oversized_rom));
 }
+

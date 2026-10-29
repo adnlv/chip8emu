@@ -208,3 +208,4 @@ TEST(Chip8AluTest, OpcodeCxkkGeneratesMaskedRandomByteWithSeededEngine)
 	EXPECT_EQ(chip8_a.get_register(1), chip8_b.get_register(1));
 	EXPECT_LE(chip8_a.get_register(1), 0x0F);
 }
+
