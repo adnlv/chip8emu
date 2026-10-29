@@ -1,5 +1,6 @@
 add_executable(chip8_tests
-    test_smoke.cpp
+    test_chip8_init.cpp
+    test_chip8_opcodes_alu.cpp
 )
 target_link_libraries(chip8_tests PRIVATE chip8_core GTest::gtest_main)
 target_compile_features(chip8_tests PRIVATE cxx_std_20)
