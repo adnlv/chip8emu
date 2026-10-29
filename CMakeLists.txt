@@ -17,11 +17,16 @@ FetchContent_Declare(SFML
     SYSTEM)
 FetchContent_MakeAvailable(SFML)
 
+add_library(chip8_core STATIC
+    src/chip8.cpp
+)
+target_include_directories(chip8_core PUBLIC src)
+target_compile_features(chip8_core PUBLIC cxx_std_20)
+
 add_executable(chip8emu
     src/main.cpp
-    src/chip8.cpp
     src/platform.cpp
 )
 target_include_directories(chip8emu PRIVATE src)
 target_compile_features(chip8emu PRIVATE cxx_std_20)
-target_link_libraries(chip8emu PRIVATE SFML::Graphics SFML::Audio)
+target_link_libraries(chip8emu PRIVATE chip8_core SFML::Graphics SFML::Audio)
