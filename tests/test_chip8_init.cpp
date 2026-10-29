@@ -39,7 +39,7 @@ TEST(Chip8InitTest, FontsetIsCorrectlyLoadedInMemory)
 	for (size_t i = 0; i < FONTSET_CAP; ++i)
 	{
 		EXPECT_EQ(chip8.get_memory(static_cast<uint16_t>(FONTSET_START_ADDR + i)), FONTSET[i])
-		    << "Fontset byte mismatch at index " << i;
+			<< "Fontset byte mismatch at index " << i;
 	}
 }
 
@@ -68,4 +68,3 @@ TEST(Chip8InitTest, LoadRomRejectsOversizedSpan)
 	const std::vector<uint8_t> oversized_rom(Chip8::MAX_ROM_SIZE + 1, 0xFF);
 	EXPECT_FALSE(chip8.load_rom(oversized_rom));
 }
-

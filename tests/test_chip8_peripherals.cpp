@@ -5,14 +5,14 @@
 
 namespace
 {
-void execute_instruction(Chip8& chip8, uint16_t opcode)
-{
-	const uint16_t pc = chip8.get_pc();
-	chip8.write_memory(pc, static_cast<uint8_t>(opcode >> 8));
-	chip8.write_memory(static_cast<uint16_t>(pc + 1), static_cast<uint8_t>(opcode & 0xFF));
-	chip8.cycle();
+	void execute_instruction(Chip8 &chip8, uint16_t opcode)
+	{
+		const uint16_t pc = chip8.get_pc();
+		chip8.write_memory(pc, static_cast<uint8_t>(opcode >> 8));
+		chip8.write_memory(static_cast<uint16_t>(pc + 1), static_cast<uint8_t>(opcode & 0xFF));
+		chip8.cycle();
+	}
 }
-} // namespace
 
 TEST(Chip8PeripheralTest, DelayAndSoundTimersTickDown)
 {
@@ -207,7 +207,7 @@ TEST(Chip8PeripheralTest, Opcode00E0ClearsDisplayBuffer)
 	execute_instruction(chip8, 0x00E0); // CLS
 
 	EXPECT_TRUE(chip8.draw_flag());
-	const uint8_t* fb = chip8.get_frame_buffer();
+	const uint8_t *fb = chip8.get_frame_buffer();
 	for (size_t i = 0; i < Chip8::FRAME_BUF_CAP; ++i)
 	{
 		ASSERT_EQ(fb[i], 0);
@@ -230,7 +230,7 @@ TEST(Chip8PeripheralTest, OpcodeDxynDrawsSpriteAndDetectsCollision)
 	EXPECT_EQ(chip8.get_register(0xF), 0);
 	EXPECT_TRUE(chip8.draw_flag());
 
-	const uint8_t* fb = chip8.get_frame_buffer();
+	const uint8_t *fb = chip8.get_frame_buffer();
 	for (size_t col = 0; col < 4; ++col)
 	{
 		EXPECT_EQ(fb[col], 1);
@@ -249,4 +249,3 @@ TEST(Chip8PeripheralTest, OpcodeDxynDrawsSpriteAndDetectsCollision)
 		EXPECT_EQ(fb[col], 0);
 	}
 }
-

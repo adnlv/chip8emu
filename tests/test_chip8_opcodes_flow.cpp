@@ -4,14 +4,14 @@
 
 namespace
 {
-void execute_instruction(Chip8& chip8, uint16_t opcode)
-{
-	const uint16_t pc = chip8.get_pc();
-	chip8.write_memory(pc, static_cast<uint8_t>(opcode >> 8));
-	chip8.write_memory(static_cast<uint16_t>(pc + 1), static_cast<uint8_t>(opcode & 0xFF));
-	chip8.cycle();
+	void execute_instruction(Chip8 &chip8, uint16_t opcode)
+	{
+		const uint16_t pc = chip8.get_pc();
+		chip8.write_memory(pc, static_cast<uint8_t>(opcode >> 8));
+		chip8.write_memory(static_cast<uint16_t>(pc + 1), static_cast<uint8_t>(opcode & 0xFF));
+		chip8.cycle();
+	}
 }
-} // namespace
 
 TEST(Chip8FlowTest, Opcode1nnnJumpsToSpecifiedAddress)
 {
@@ -131,4 +131,3 @@ TEST(Chip8FlowTest, OpcodeBnnnJumpsToAddressPlusV0)
 
 	EXPECT_EQ(chip8.get_pc(), 0x312);
 }
-
